@@ -1,0 +1,23 @@
+{
+  "source": "mock",
+  "countries": [
+    {
+      "countryCode": "DE",
+      "countryName": "Mock country for DE",
+      "languages": [
+        "Example language"
+      ],
+      "population": 0,
+      "description": "Mock response for local testing without an external API call."
+    },
+    {
+      "countryCode": "US",
+      "countryName": "Mock country for US",
+      "languages": [
+        "Example language"
+      ],
+      "population": 0,
+      "description": "Mock response for local testing without an external API call."
+    }
+  ]
+}
