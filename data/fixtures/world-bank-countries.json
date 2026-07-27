@@ -1,0 +1,35 @@
+{
+  "fixtureType": "representative World Bank-shaped country metadata",
+  "countries": {
+    "DE": {
+      "id": "DEU",
+      "iso2Code": "DE",
+      "name": "Germany",
+      "region": {"id": "ECS", "value": "Europe & Central Asia"},
+      "incomeLevel": {"id": "HIC", "value": "High income"},
+      "capitalCity": "Berlin",
+      "longitude": "13.4115",
+      "latitude": "52.5235"
+    },
+    "US": {
+      "id": "USA",
+      "iso2Code": "US",
+      "name": "United States",
+      "region": {"id": "NAC", "value": "North America"},
+      "incomeLevel": {"id": "HIC", "value": "High income"},
+      "capitalCity": "Washington D.C.",
+      "longitude": "-77.032",
+      "latitude": "38.8895"
+    },
+    "JP": {
+      "id": "JPN",
+      "iso2Code": "JP",
+      "name": "Japan",
+      "region": {"id": "EAS", "value": "East Asia & Pacific"},
+      "incomeLevel": {"id": "HIC", "value": "High income"},
+      "capitalCity": "Tokyo",
+      "longitude": "139.77",
+      "latitude": "35.67"
+    }
+  }
+}

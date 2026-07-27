@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python 3.12 (${{ matrix.os-name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os-name: Ubuntu
+          - os: windows-latest
+            os-name: Windows
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Compile application and tests
+        run: python -m compileall -q country_api tests main.py
+
+      - name: Run unit and API tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Build deterministic fixture database through Flask CLI
+        env:
+          COUNTRY_API_DATABASE: instance/ci-country-data.sqlite
+        run: >-
+          python -m flask --app country_api:create_app refresh-data
+          --codes DE,US,JP
+          --from-year 2022
+          --to-year 2023
+          --fixture-dir data/fixtures
