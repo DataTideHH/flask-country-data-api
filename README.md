@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/DataTideHH/flask-country-data-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DataTideHH/flask-country-data-api/actions/workflows/ci.yml)
 
+[Project site](https://datatidehh.github.io/flask-country-data-api/) · [OpenAPI contract](openapi/openapi.yaml) · [Architecture](docs/architecture.md)
+
 **Reproducible World Bank ingestion workflow with source validation, constrained SQLite persistence, versioned Flask endpoints, SQL data-quality checks, OpenAPI documentation and cross-platform automated tests.**
 
 ## Portfolio purpose
@@ -40,8 +42,8 @@ Normal HTTP requests never call the World Bank directly. Data acquisition is an 
 | Process observability | `ingestion_runs` records start, completion, status, row counts and failures |
 | SQL / Data quality | Ten named checks executed from `sql/data_quality_queries.sql` |
 | API design | Versioned endpoints, bounded parameters and consistent JSON contracts |
-| Documentation | OpenAPI 3.1, architecture diagram, ERD, data dictionary and provenance mapping |
-| Automated validation | Unit, persistence, route, CLI, quality and contract tests on Ubuntu and Windows |
+| Documentation | OpenAPI 3.1, architecture diagram, ERD, data dictionary, provenance mapping and a compact project site |
+| Automated validation | Unit, persistence, route, CLI, quality and validated OpenAPI contract tests on Ubuntu and Windows |
 
 ## Architecture
 
@@ -100,7 +102,7 @@ GET /api/v1/data-quality
 GET /api/v1/ingestion-runs?limit=5
 ```
 
-The complete contract is versioned in [`openapi/openapi.yaml`](openapi/openapi.yaml).
+The complete contract is versioned in [`openapi/openapi.yaml`](openapi/openapi.yaml). CI validates both OpenAPI semantics and coverage of the implemented Flask routes.
 
 ## Summary response
 
@@ -224,7 +226,7 @@ python -m flask --app country_api:create_app refresh-data \
   --to-year 2024
 ```
 
-A failed live refresh is recorded in `ingestion_runs` and does not replace previously committed data.
+A failed live refresh is recorded in `ingestion_runs`. Data replacement itself is transactional, so validation or persistence failures do not partially replace the selected country and year range.
 
 ## Tests and CI
 
@@ -245,8 +247,9 @@ GitHub Actions validates Python 3.12 on Ubuntu and Windows. The workflow:
 
 1. compiles application and test modules
 2. runs unit, persistence, route, CLI, data-quality and OpenAPI tests
-3. builds a deterministic SQLite database from fixtures
-4. executes the persisted SQL quality report and requires `passed`
+3. validates the OpenAPI 3.1 document and its coverage of runtime routes
+4. builds a deterministic SQLite database from fixtures
+5. executes the persisted SQL quality report and requires `passed`
 
 Automated tests never perform live HTTP requests.
 
@@ -256,18 +259,11 @@ Automated tests never perform live HTTP requests.
 flask-country-data-api/
 ├── .github/workflows/ci.yml
 ├── country_api/
-│   ├── __init__.py
-│   ├── cli.py
-│   ├── database.py
-│   ├── errors.py
-│   ├── routes.py
-│   ├── service.py
-│   ├── validation.py
-│   └── world_bank.py
 ├── data/fixtures/
-│   ├── world-bank-countries.json
-│   └── world-bank-population.json
 ├── docs/
+│   ├── _config.yml
+│   ├── index.md
+│   ├── assets/css/style.scss
 │   ├── architecture.md
 │   ├── data-dictionary.md
 │   ├── data-model.md
@@ -278,11 +274,6 @@ flask-country-data-api/
 │   ├── data_quality_queries.sql
 │   └── schema.sql
 ├── tests/
-│   ├── test_openapi.py
-│   ├── test_reporting.py
-│   ├── test_routes_and_cli.py
-│   ├── test_service_and_database.py
-│   └── test_validation.py
 ├── main.py
 ├── requirements-dev.txt
 ├── requirements.txt
