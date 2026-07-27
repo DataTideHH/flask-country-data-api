@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 import yaml
+from openapi_spec_validator import validate
 
 from country_api import create_app
 
@@ -13,24 +14,27 @@ OPENAPI_PATH = Path(__file__).resolve().parents[1] / "openapi" / "openapi.yaml"
 
 
 class OpenApiContractTest(unittest.TestCase):
-    def test_openapi_document_is_valid_yaml_with_expected_paths(self):
+    def test_openapi_document_is_valid_and_covers_runtime_routes(self):
         document = yaml.safe_load(OPENAPI_PATH.read_text(encoding="utf-8"))
+        validate(document)
 
         self.assertEqual(document["openapi"], "3.1.0")
         self.assertEqual(document["info"]["title"], "Flask Country Data API")
 
-        expected_paths = {
-            "/",
-            "/health",
-            "/api/v1/countries",
-            "/api/v1/countries/{code}",
-            "/api/v1/countries/{code}/population",
-            "/api/v1/summary",
-            "/api/v1/data-quality",
-            "/api/v1/ingestion-runs",
-            "/openapi/openapi.yaml",
-        }
-        self.assertEqual(set(document["paths"]), expected_paths)
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = create_app(
+                {
+                    "TESTING": True,
+                    "DATABASE_PATH": str(Path(temporary_directory) / "country.sqlite"),
+                }
+            )
+            runtime_paths = {
+                rule.rule.replace("<code>", "{code}")
+                for rule in app.url_map.iter_rules()
+                if rule.endpoint != "static"
+            }
+
+        self.assertEqual(set(document["paths"]), runtime_paths)
 
         operation_ids = [
             operation["operationId"]
