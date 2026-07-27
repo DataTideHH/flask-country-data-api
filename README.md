@@ -1,6 +1,7 @@
 # Flask Country Data API
 
 [![CI](https://github.com/DataTideHH/flask-country-data-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DataTideHH/flask-country-data-api/actions/workflows/ci.yml)
+[![GitHub Pages](https://github.com/DataTideHH/flask-country-data-api/actions/workflows/pages/pages-build-deployment/badge.svg)](https://github.com/DataTideHH/flask-country-data-api/actions/workflows/pages/pages-build-deployment)
 
 [Project site](https://datatidehh.github.io/flask-country-data-api/) · [OpenAPI contract](openapi/openapi.yaml) · [Architecture](docs/architecture.md)
 
