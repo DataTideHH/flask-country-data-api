@@ -2,80 +2,91 @@
 
 [![CI](https://github.com/DataTideHH/flask-country-data-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DataTideHH/flask-country-data-api/actions/workflows/ci.yml)
 
-**Flask API and reproducible World Bank data workflow with SQLite persistence, request and source validation, explicit provenance, fixture-based tests and cross-platform CI.**
+**Reproducible World Bank ingestion workflow with source validation, constrained SQLite persistence, versioned Flask endpoints, SQL data-quality checks, OpenAPI documentation and cross-platform automated tests.**
 
-## Purpose
+## Portfolio purpose
 
-External data is not automatically ready for reliable application use. Source responses must be checked, normalized, stored under stable constraints and exposed through a documented contract.
+This project demonstrates how external reference and indicator data can be turned into a controlled, explainable data service.
 
-This project demonstrates that process with country metadata and the World Bank population indicator `SP.POP.TOTL`:
+The implementation is deliberately focused on the parts that matter in Data/BI and process-oriented work:
+
+- understanding the source contract
+- separating ingestion from data delivery
+- validating and normalizing source records
+- designing a relational model with constraints
+- recording process execution and failure states
+- exposing stable API responses
+- checking persisted data with reviewable SQL
+- documenting architecture, lineage and the public API contract
 
 ```text
-World Bank API
-→ source validation
-→ normalization
+World Bank API or versioned fixtures
+→ validation and normalization
 → transactional SQLite persistence
-→ versioned Flask API
+→ SQL data-quality checks
+→ versioned Flask read API
 ```
 
-The Flask routes read from SQLite. They do not call the external source during normal requests. Data retrieval is an explicit refresh process, which keeps API responses predictable and separates ingestion failures from read traffic.
+Normal HTTP requests never call the World Bank directly. Data acquisition is an explicit refresh process, while the API reads the last successfully committed SQLite state.
 
-## What the project demonstrates
+## Technical evidence
 
-- Flask application factory and blueprints
-- external REST API integration with timeout and error handling
-- deterministic fixture mode for local validation and CI
-- input, source-shape and semantic validation
-- relational SQLite modelling with foreign keys and constraints
-- ingestion-run tracking
-- versioned API endpoints and stable JSON error responses
-- tests covering validation, persistence, routes and CLI behavior
-- GitHub Actions on Python 3.12 for Ubuntu and Windows
+| Area | Evidence in this repository |
+|---|---|
+| Python / Flask | Application factory, blueprints, CLI command and stable error handlers |
+| External APIs | World Bank client with timeout and source-response validation |
+| Reproducibility | Version-controlled source-shaped fixtures and deterministic CI |
+| Data modelling | Normalized SQLite tables, keys, checks, foreign keys and indexes |
+| Process observability | `ingestion_runs` records start, completion, status, row counts and failures |
+| SQL / Data quality | Ten named checks executed from `sql/data_quality_queries.sql` |
+| API design | Versioned endpoints, bounded parameters and consistent JSON contracts |
+| Documentation | OpenAPI 3.1, architecture diagram, ERD, data dictionary and provenance mapping |
+| Automated validation | Unit, persistence, route, CLI, quality and contract tests on Ubuntu and Windows |
 
 ## Architecture
 
-```text
-refresh-data CLI
-    |
-    +-- WorldBankClient -------- live source
-    |
-    +-- FixtureWorldBankClient - deterministic fixtures
-                |
-                v
-        validation + normalization
-                |
-                v
-        SQLite transaction
-                |
-                v
-        Flask read API
+```mermaid
+flowchart LR
+    WB[World Bank API] --> CLI[refresh-data CLI]
+    FX[Versioned fixtures] --> CLI
+    CLI --> VAL[Validation and normalization]
+    VAL --> DB[(SQLite)]
+    DB --> API[Flask read API]
+    DB --> DQ[SQL quality checks]
+    DQ --> API
+    API --> CLIENT[API consumer]
 ```
+
+Detailed decisions and component responsibilities are documented in [`docs/architecture.md`](docs/architecture.md).
 
 ## Data model
 
-### `countries`
+The persisted model contains:
 
-Stores one normalized record per ISO-2 country code, including region, income level, capital city, coordinates and provenance.
+- `countries` — normalized country metadata and record provenance
+- `population_observations` — annual `SP.POP.TOTL` observations
+- `ingestion_runs` — operational history for refresh executions
 
-### `population_observations`
+See:
 
-Stores annual `SP.POP.TOTL` observations with a composite key of country code and year.
-
-### `ingestion_runs`
-
-Records refresh status, timestamps, requested countries, loaded rows and failure messages.
-
-See [`sql/schema.sql`](sql/schema.sql) and [`docs/data-quality-notes.md`](docs/data-quality-notes.md).
+- [`sql/schema.sql`](sql/schema.sql)
+- [`docs/data-model.md`](docs/data-model.md)
+- [`docs/data-dictionary.md`](docs/data-dictionary.md)
+- [`docs/data-provenance.md`](docs/data-provenance.md)
 
 ## API endpoints
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /` | Service metadata and endpoint overview |
-| `GET /health` | Database availability and row counts |
+| `GET /health` | Database availability and basic row counts |
 | `GET /api/v1/countries` | List and filter countries |
 | `GET /api/v1/countries/<code>` | Read one country with its latest population |
 | `GET /api/v1/countries/<code>/population` | Read a population time range |
+| `GET /api/v1/summary` | Read dataset-level metrics |
+| `GET /api/v1/data-quality` | Execute and report SQL data-quality checks |
+| `GET /api/v1/ingestion-runs` | Read recent refresh executions |
+| `GET /openapi/openapi.yaml` | Download the OpenAPI 3.1 contract |
 
 Examples:
 
@@ -84,9 +95,73 @@ GET /api/v1/countries?codes=DE,US,JP&limit=10
 GET /api/v1/countries?region=North%20America
 GET /api/v1/countries/DE
 GET /api/v1/countries/DE/population?from=2022&to=2023
+GET /api/v1/summary
+GET /api/v1/data-quality
+GET /api/v1/ingestion-runs?limit=5
 ```
 
-Stable error contract:
+The complete contract is versioned in [`openapi/openapi.yaml`](openapi/openapi.yaml).
+
+## Summary response
+
+```json
+{
+  "data": {
+    "countries": 3,
+    "populationObservations": 6,
+    "latestObservationYear": 2023,
+    "missingPopulationValues": 0,
+    "countriesWithoutPopulation": 0,
+    "lastSuccessfulIngestion": "2026-07-27T17:00:00+00:00"
+  }
+}
+```
+
+The timestamp above is illustrative. Actual values come from the local database.
+
+## Data-quality reporting
+
+The API executes the named SQL statements in [`sql/data_quality_queries.sql`](sql/data_quality_queries.sql).
+
+Checks cover:
+
+- duplicate and malformed country keys
+- missing country names
+- invalid coordinates
+- duplicate or orphaned population observations
+- negative population values
+- unexpected indicator codes
+- countries without population history
+- ingestion runs left incomplete
+
+Example shape:
+
+```json
+{
+  "data": {
+    "status": "passed",
+    "errorViolations": 0,
+    "warningViolations": 0,
+    "checks": [
+      {
+        "name": "orphan_population_observations",
+        "severity": "error",
+        "description": "Every population observation must reference an existing country.",
+        "violations": 0,
+        "passed": true
+      }
+    ],
+    "provenance": {
+      "queryFile": "sql/data_quality_queries.sql",
+      "lastSuccessfulIngestion": "2026-07-27T17:00:00+00:00"
+    }
+  }
+}
+```
+
+See [`docs/data-quality-notes.md`](docs/data-quality-notes.md) for the complete rule set and status logic.
+
+## Stable error contract
 
 ```json
 {
@@ -138,7 +213,7 @@ python -m flask --app country_api:create_app run --port 8080
 
 The fixture command creates a deterministic local database without network access.
 
-## Refresh from the live World Bank API
+## Live World Bank refresh
 
 Remove `--fixture-dir` to use the live source explicitly:
 
@@ -149,16 +224,31 @@ python -m flask --app country_api:create_app refresh-data \
   --to-year 2024
 ```
 
-Normal API requests continue to read only from the local SQLite database.
+A failed live refresh is recorded in `ingestion_runs` and does not replace previously committed data.
 
-## Tests
+## Tests and CI
+
+Install the development requirements:
+
+```powershell
+python -m pip install -r requirements-dev.txt
+```
+
+Run the same core checks used in CI:
 
 ```powershell
 python -m compileall -q country_api tests main.py
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-The test suite uses versioned World Bank-shaped fixtures and does not perform live HTTP requests.
+GitHub Actions validates Python 3.12 on Ubuntu and Windows. The workflow:
+
+1. compiles application and test modules
+2. runs unit, persistence, route, CLI, data-quality and OpenAPI tests
+3. builds a deterministic SQLite database from fixtures
+4. executes the persisted SQL quality report and requires `passed`
+
+Automated tests never perform live HTTP requests.
 
 ## Repository structure
 
@@ -177,20 +267,28 @@ flask-country-data-api/
 ├── data/fixtures/
 │   ├── world-bank-countries.json
 │   └── world-bank-population.json
-├── docs/data-quality-notes.md
-├── examples/sample-response.json
-├── sql/schema.sql
+├── docs/
+│   ├── architecture.md
+│   ├── data-dictionary.md
+│   ├── data-model.md
+│   ├── data-provenance.md
+│   └── data-quality-notes.md
+├── openapi/openapi.yaml
+├── sql/
+│   ├── data_quality_queries.sql
+│   └── schema.sql
 ├── tests/
+│   ├── test_openapi.py
+│   ├── test_reporting.py
 │   ├── test_routes_and_cli.py
 │   ├── test_service_and_database.py
 │   └── test_validation.py
 ├── main.py
+├── requirements-dev.txt
 ├── requirements.txt
 └── README.md
 ```
 
 ## Scope boundary
 
-This is a deliberately bounded portfolio project. It demonstrates controlled data ingestion and API delivery without adding an unnecessary frontend, authentication system, container platform or cloud deployment.
-
-The next increment can add richer data-quality reporting, OpenAPI documentation and recruiter-facing architecture evidence without changing the deterministic core.
+This is a deliberately bounded portfolio project. It demonstrates controlled ingestion, relational persistence, process observability, data quality and API delivery without adding an unrelated frontend, authentication system, container platform or cloud deployment.

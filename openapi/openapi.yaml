@@ -1,0 +1,505 @@
+openapi: 3.1.0
+info:
+  title: Flask Country Data API
+  version: 1.0.0
+  description: >-
+    Deterministic read API for normalized World Bank country metadata,
+    population observations, ingestion history and data-quality results.
+servers:
+  - url: http://127.0.0.1:8080
+    description: Local development server
+paths:
+  /:
+    get:
+      summary: Describe the service
+      operationId: getServiceMetadata
+      responses:
+        '200':
+          description: Service metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [service, description, documentation, endpoints]
+                properties:
+                  service:
+                    type: string
+                    const: flask-country-data-api
+                  description:
+                    type: string
+                  documentation:
+                    type: string
+                  endpoints:
+                    type: array
+                    items:
+                      type: string
+  /health:
+    get:
+      summary: Check database availability
+      operationId: getHealth
+      responses:
+        '200':
+          description: Database is available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+  /api/v1/countries:
+    get:
+      summary: List countries
+      operationId: listCountries
+      parameters:
+        - name: codes
+          in: query
+          description: Comma-separated two-letter country codes; duplicates are removed.
+          schema:
+            type: string
+          example: DE,US,JP
+        - name: region
+          in: query
+          schema:
+            type: string
+          example: North America
+        - name: income_level
+          in: query
+          schema:
+            type: string
+          example: High income
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Matching countries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Country'
+                  meta:
+                    $ref: '#/components/schemas/ListMeta'
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+  /api/v1/countries/{code}:
+    get:
+      summary: Read one country
+      operationId: getCountry
+      parameters:
+        - $ref: '#/components/parameters/CountryCode'
+      responses:
+        '200':
+          description: Country details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Country'
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+        '404':
+          $ref: '#/components/responses/CountryNotFound'
+  /api/v1/countries/{code}/population:
+    get:
+      summary: Read population history
+      operationId: getPopulationHistory
+      parameters:
+        - $ref: '#/components/parameters/CountryCode'
+        - name: from
+          in: query
+          schema:
+            type: integer
+            minimum: 1960
+          example: 2022
+        - name: to
+          in: query
+          schema:
+            type: integer
+            minimum: 1960
+          example: 2023
+      responses:
+        '200':
+          description: Population observations in ascending year order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PopulationObservation'
+                  meta:
+                    type: object
+                    required: [countryCode, fromYear, toYear, count]
+                    properties:
+                      countryCode:
+                        type: string
+                        pattern: '^[A-Z]{2}$'
+                      fromYear:
+                        type: integer
+                      toYear:
+                        type: integer
+                      count:
+                        type: integer
+                        minimum: 0
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+        '404':
+          $ref: '#/components/responses/CountryNotFound'
+  /api/v1/summary:
+    get:
+      summary: Read dataset summary metrics
+      operationId: getSummary
+      responses:
+        '200':
+          description: Current persisted dataset summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Summary'
+  /api/v1/data-quality:
+    get:
+      summary: Execute version-controlled SQL data-quality checks
+      operationId: getDataQuality
+      responses:
+        '200':
+          description: Data-quality status and individual checks
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DataQualityReport'
+  /api/v1/ingestion-runs:
+    get:
+      summary: List recent ingestion runs
+      operationId: listIngestionRuns
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Recent refresh executions in descending run order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/IngestionRun'
+                  meta:
+                    $ref: '#/components/schemas/ListMeta'
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+  /openapi/openapi.yaml:
+    get:
+      summary: Download this OpenAPI document
+      operationId: getOpenApiDocument
+      responses:
+        '200':
+          description: OpenAPI YAML document
+          content:
+            application/yaml:
+              schema:
+                type: string
+components:
+  parameters:
+    CountryCode:
+      name: code
+      in: path
+      required: true
+      description: Two-letter country code
+      schema:
+        type: string
+        pattern: '^[A-Za-z]{2}$'
+      example: DE
+  responses:
+    InvalidQuery:
+      description: Invalid path or query parameter
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: invalid_query_parameter
+              message: limit must be between 1 and 100.
+    CountryNotFound:
+      description: Country code is valid but not present in the database
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: country_not_found
+              message: No country was found for code ZZ.
+              details:
+                countryCode: ZZ
+    DatabaseUnavailable:
+      description: SQLite database cannot be read
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    Provenance:
+      type: object
+      required: [source, fetchedAt]
+      properties:
+        source:
+          type: string
+        fetchedAt:
+          type: string
+          format: date-time
+    LatestPopulation:
+      type: [object, 'null']
+      required: [year, value]
+      properties:
+        year:
+          type: integer
+          minimum: 1960
+        value:
+          type: [integer, 'null']
+          minimum: 0
+    Coordinates:
+      type: object
+      required: [longitude, latitude]
+      properties:
+        longitude:
+          type: [number, 'null']
+          minimum: -180
+          maximum: 180
+        latitude:
+          type: [number, 'null']
+          minimum: -90
+          maximum: 90
+    Country:
+      type: object
+      required:
+        - countryCode
+        - countryName
+        - region
+        - incomeLevel
+        - capitalCity
+        - coordinates
+        - latestPopulation
+        - provenance
+      properties:
+        countryCode:
+          type: string
+          pattern: '^[A-Z]{2}$'
+        countryName:
+          type: string
+          minLength: 1
+        region:
+          type: [string, 'null']
+        incomeLevel:
+          type: [string, 'null']
+        capitalCity:
+          type: [string, 'null']
+        coordinates:
+          $ref: '#/components/schemas/Coordinates'
+        latestPopulation:
+          $ref: '#/components/schemas/LatestPopulation'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+    PopulationObservation:
+      type: object
+      required: [year, value, indicatorCode, provenance]
+      properties:
+        year:
+          type: integer
+          minimum: 1960
+        value:
+          type: [integer, 'null']
+          minimum: 0
+        indicatorCode:
+          type: string
+          const: SP.POP.TOTL
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+    Health:
+      type: object
+      required: [status, countries, populationObservations, lastSuccessfulIngestion]
+      properties:
+        status:
+          type: string
+          const: ok
+        countries:
+          type: integer
+          minimum: 0
+        populationObservations:
+          type: integer
+          minimum: 0
+        lastSuccessfulIngestion:
+          type: [string, 'null']
+          format: date-time
+    Summary:
+      type: object
+      required:
+        - countries
+        - populationObservations
+        - latestObservationYear
+        - missingPopulationValues
+        - countriesWithoutPopulation
+        - lastSuccessfulIngestion
+      properties:
+        countries:
+          type: integer
+          minimum: 0
+        populationObservations:
+          type: integer
+          minimum: 0
+        latestObservationYear:
+          type: [integer, 'null']
+        missingPopulationValues:
+          type: integer
+          minimum: 0
+        countriesWithoutPopulation:
+          type: integer
+          minimum: 0
+        lastSuccessfulIngestion:
+          type: [string, 'null']
+          format: date-time
+    DataQualityCheck:
+      type: object
+      required: [name, severity, description, violations, passed]
+      properties:
+        name:
+          type: string
+        severity:
+          type: string
+          enum: [error, warning]
+        description:
+          type: string
+        violations:
+          type: integer
+          minimum: 0
+        passed:
+          type: boolean
+    DataQualityReport:
+      type: object
+      required:
+        - status
+        - errorViolations
+        - warningViolations
+        - checks
+        - provenance
+      properties:
+        status:
+          type: string
+          enum: [passed, warning, failed]
+        errorViolations:
+          type: integer
+          minimum: 0
+        warningViolations:
+          type: integer
+          minimum: 0
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataQualityCheck'
+        provenance:
+          type: object
+          required: [queryFile, lastSuccessfulIngestion]
+          properties:
+            queryFile:
+              type: string
+              const: sql/data_quality_queries.sql
+            lastSuccessfulIngestion:
+              type: [string, 'null']
+              format: date-time
+    IngestionRun:
+      type: object
+      required:
+        - runId
+        - startedAt
+        - completedAt
+        - status
+        - countriesRequested
+        - countriesLoaded
+        - observationsLoaded
+        - rejectedRecords
+        - errorMessage
+      properties:
+        runId:
+          type: integer
+          minimum: 1
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: [string, 'null']
+          format: date-time
+        status:
+          type: string
+          enum: [running, success, failed]
+        countriesRequested:
+          type: integer
+          minimum: 0
+        countriesLoaded:
+          type: integer
+          minimum: 0
+        observationsLoaded:
+          type: integer
+          minimum: 0
+        rejectedRecords:
+          type: integer
+          minimum: 0
+        errorMessage:
+          type: [string, 'null']
+    ListMeta:
+      type: object
+      required: [count, limit]
+      properties:
+        count:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
