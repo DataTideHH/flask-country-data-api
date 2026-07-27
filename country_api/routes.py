@@ -3,9 +3,10 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, send_from_directory
 
 from country_api.database import (
+    PROJECT_ROOT,
     data_quality_snapshot,
     get_country,
     get_population_history,
@@ -56,6 +57,15 @@ def index():
                 "/api/v1/ingestion-runs",
             ],
         }
+    )
+
+
+@api.get("/openapi/openapi.yaml")
+def openapi_document():
+    return send_from_directory(
+        PROJECT_ROOT / "openapi",
+        "openapi.yaml",
+        mimetype="application/yaml",
     )
 
 
