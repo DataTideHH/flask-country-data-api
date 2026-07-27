@@ -7,7 +7,52 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-SCHEMA_PATH = Path(__file__).resolve().parents[1] / "sql" / "schema.sql"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SCHEMA_PATH = PROJECT_ROOT / "sql" / "schema.sql"
+DATA_QUALITY_QUERIES_PATH = PROJECT_ROOT / "sql" / "data_quality_queries.sql"
+
+DATA_QUALITY_METADATA = {
+    "duplicate_country_codes": (
+        "error",
+        "Country codes must be unique.",
+    ),
+    "invalid_country_codes": (
+        "error",
+        "Country codes must contain exactly two uppercase letters.",
+    ),
+    "missing_country_names": (
+        "error",
+        "Every country record must contain a non-empty name.",
+    ),
+    "invalid_coordinates": (
+        "error",
+        "Stored coordinates must remain inside valid geographic ranges.",
+    ),
+    "duplicate_population_observations": (
+        "error",
+        "Each country and year may have at most one population observation.",
+    ),
+    "orphan_population_observations": (
+        "error",
+        "Every population observation must reference an existing country.",
+    ),
+    "negative_population_values": (
+        "error",
+        "Population values cannot be negative.",
+    ),
+    "unexpected_indicator_codes": (
+        "error",
+        "Population rows must use the SP.POP.TOTL indicator.",
+    ),
+    "countries_without_population": (
+        "warning",
+        "Countries should normally have at least one population observation.",
+    ),
+    "incomplete_ingestion_runs": (
+        "warning",
+        "Ingestion runs should not remain in running status indefinitely.",
+    ),
+}
 
 
 @contextmanager
@@ -276,4 +321,159 @@ def health_snapshot(database_path: str | Path) -> dict[str, int | str | None]:
         "countries": int(countries),
         "populationObservations": int(observations),
         "lastSuccessfulIngestion": last_run[0] if last_run else None,
+    }
+
+
+def summary_snapshot(database_path: str | Path) -> dict[str, int | str | None]:
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM countries) AS countries,
+                (SELECT COUNT(*) FROM population_observations) AS observations,
+                (SELECT MAX(observation_year) FROM population_observations) AS latest_year,
+                (
+                    SELECT COUNT(*)
+                    FROM population_observations
+                    WHERE population IS NULL
+                ) AS missing_population_values,
+                (
+                    SELECT COUNT(*)
+                    FROM countries AS c
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM population_observations AS p
+                        WHERE p.iso2_code = c.iso2_code
+                    )
+                ) AS countries_without_population,
+                (
+                    SELECT completed_at
+                    FROM ingestion_runs
+                    WHERE status = 'success'
+                    ORDER BY run_id DESC
+                    LIMIT 1
+                ) AS last_successful_ingestion
+            """
+        ).fetchone()
+
+    return {
+        "countries": int(row["countries"]),
+        "populationObservations": int(row["observations"]),
+        "latestObservationYear": row["latest_year"],
+        "missingPopulationValues": int(row["missing_population_values"]),
+        "countriesWithoutPopulation": int(row["countries_without_population"]),
+        "lastSuccessfulIngestion": row["last_successful_ingestion"],
+    }
+
+
+def list_ingestion_runs(
+    database_path: str | Path,
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT run_id, started_at, completed_at, status, countries_requested,
+                   countries_loaded, observations_loaded, rejected_records, error_message
+            FROM ingestion_runs
+            ORDER BY run_id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+
+    return [
+        {
+            "runId": row["run_id"],
+            "startedAt": row["started_at"],
+            "completedAt": row["completed_at"],
+            "status": row["status"],
+            "countriesRequested": row["countries_requested"],
+            "countriesLoaded": row["countries_loaded"],
+            "observationsLoaded": row["observations_loaded"],
+            "rejectedRecords": row["rejected_records"],
+            "errorMessage": row["error_message"],
+        }
+        for row in rows
+    ]
+
+
+def _load_named_queries(path: Path = DATA_QUALITY_QUERIES_PATH) -> dict[str, str]:
+    queries: dict[str, str] = {}
+    current_name: str | None = None
+    current_lines: list[str] = []
+
+    def store_current_query() -> None:
+        if current_name is None:
+            return
+        query = "\n".join(current_lines).strip()
+        if not query:
+            raise ValueError(f"Data-quality query {current_name!r} is empty.")
+        queries[current_name] = query
+
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("-- name:"):
+            store_current_query()
+            current_name = line.partition(":")[2].strip()
+            current_lines = []
+        elif current_name is not None:
+            current_lines.append(line)
+
+    store_current_query()
+
+    if set(queries) != set(DATA_QUALITY_METADATA):
+        missing = sorted(set(DATA_QUALITY_METADATA) - set(queries))
+        unexpected = sorted(set(queries) - set(DATA_QUALITY_METADATA))
+        raise ValueError(
+            "Data-quality query definitions do not match metadata. "
+            f"Missing: {missing}; unexpected: {unexpected}."
+        )
+    return queries
+
+
+def data_quality_snapshot(database_path: str | Path) -> dict[str, Any]:
+    named_queries = _load_named_queries()
+    checks: list[dict[str, Any]] = []
+
+    with connect_database(database_path) as connection:
+        for name, query in named_queries.items():
+            row = connection.execute(query).fetchone()
+            violations = int(row["violations"])
+            severity, description = DATA_QUALITY_METADATA[name]
+            checks.append(
+                {
+                    "name": name,
+                    "severity": severity,
+                    "description": description,
+                    "violations": violations,
+                    "passed": violations == 0,
+                }
+            )
+
+    error_violations = sum(
+        check["violations"] for check in checks if check["severity"] == "error"
+    )
+    warning_violations = sum(
+        check["violations"] for check in checks if check["severity"] == "warning"
+    )
+
+    if error_violations:
+        status = "failed"
+    elif warning_violations:
+        status = "warning"
+    else:
+        status = "passed"
+
+    return {
+        "status": status,
+        "errorViolations": error_violations,
+        "warningViolations": warning_violations,
+        "checks": checks,
+        "provenance": {
+            "queryFile": "sql/data_quality_queries.sql",
+            "lastSuccessfulIngestion": summary_snapshot(database_path)[
+                "lastSuccessfulIngestion"
+            ],
+        },
     }
