@@ -6,10 +6,13 @@ from datetime import datetime
 from flask import Blueprint, current_app, jsonify, request
 
 from country_api.database import (
+    data_quality_snapshot,
     get_country,
     get_population_history,
     health_snapshot,
     list_countries,
+    list_ingestion_runs,
+    summary_snapshot,
 )
 from country_api.errors import ApiError
 from country_api.validation import (
@@ -42,11 +45,15 @@ def index():
         {
             "service": "flask-country-data-api",
             "description": "Deterministic country metadata and population API backed by SQLite.",
+            "documentation": "/openapi/openapi.yaml",
             "endpoints": [
                 "/health",
                 "/api/v1/countries",
                 "/api/v1/countries/<code>",
                 "/api/v1/countries/<code>/population",
+                "/api/v1/summary",
+                "/api/v1/data-quality",
+                "/api/v1/ingestion-runs",
             ],
         }
     )
@@ -141,3 +148,24 @@ def population_history(code: str):
             },
         }
     )
+
+
+@api.get("/api/v1/summary")
+def summary():
+    return jsonify({"data": summary_snapshot(_database_path())})
+
+
+@api.get("/api/v1/data-quality")
+def data_quality():
+    return jsonify({"data": data_quality_snapshot(_database_path())})
+
+
+@api.get("/api/v1/ingestion-runs")
+def ingestion_runs():
+    try:
+        limit = parse_limit(request.args.get("limit"), default=20, maximum=100)
+    except InputValidationError as exc:
+        raise _bad_request(exc) from exc
+
+    data = list_ingestion_runs(_database_path(), limit=limit)
+    return jsonify({"data": data, "meta": {"count": len(data), "limit": limit}})
