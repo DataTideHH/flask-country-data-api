@@ -4,12 +4,12 @@ __pycache__/
 venv/
 .env
 *.env
-credentials.json
-token.json
-access_token
-refresh_token
 .DS_Store
 .idea/
 .vscode/
-instance/
 .pytest_cache/
+.coverage
+htmlcov/
+instance/
+*.sqlite
+*.sqlite3

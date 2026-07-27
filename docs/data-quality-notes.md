@@ -1,23 +1,26 @@
 # Data Quality Notes
 
-This project uses Claude/Anthropic as a generative API to produce structured country data.
-
-That is useful for learning Flask routing, query parameters, JSON responses, external API calls, schema validation and API-key handling.
-
-It is not the same as using a verified country-data source.
-
-## Structure vs. correctness
-
-The JSON schema can check whether a response has the expected structure.
-
-It cannot prove that generated facts are correct.
-
-A generated population number can be outdated or inaccurate even if it is a valid integer.
-
-## Learning value
-
-The intended learning workflow is:
+The service separates source retrieval from API delivery:
 
 ```text
-Browser -> Flask endpoint -> query parameter -> Python list -> external generative API -> structured JSON -> JSON response
+World Bank API or versioned fixture
+→ source-shape validation
+→ normalization
+→ transactional SQLite persistence
+→ Flask read API
 ```
+
+The deterministic core enforces these rules:
+
+- country codes must be two uppercase letters
+- duplicate requested codes are removed while preserving order
+- one country record must match each requested code
+- World Bank aggregates are rejected as countries
+- coordinates must fall inside valid geographic ranges
+- population values may be missing but cannot be negative
+- population observations use indicator `SP.POP.TOTL`
+- foreign keys prevent observations without countries
+- one population value is stored per country and year
+- each ingestion run records success or failure
+
+Versioned fixtures are used for tests and CI. Live World Bank calls are available only through the explicit refresh command and are never required for automated tests.

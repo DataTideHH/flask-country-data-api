@@ -1,128 +1,196 @@
-# Flask AI Country API
+# Flask Country Data API
 
-**Flask · Query parameters · JSON responses · Anthropic/Claude API · structured output · data quality notes**
+[![CI](https://github.com/DataTideHH/flask-ai-country-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DataTideHH/flask-ai-country-api/actions/workflows/ci.yml)
 
-This repository documents a small Flask learning project.
+**Flask API and reproducible World Bank data workflow with SQLite persistence, request and source validation, explicit provenance, fixture-based tests and cross-platform CI.**
 
-The project exposes a simple HTTP endpoint that reads country codes from a query parameter, calls a generative AI API and returns structured JSON.
+## Purpose
 
-Example request:
+External data is not automatically ready for reliable application use. Source responses must be checked, normalized, stored under stable constraints and exposed through a documented contract.
 
-```text
-http://localhost:8080/countries?country=DE,US
-```
-
-The project is part of my broader **DataTideHH portfolio** and supports my learning path toward **Data/BI Analyst** roles with a focus on Python, APIs, JSON workflows, data quality awareness and responsible use of AI-assisted tools.
-
----
-
-## Why This Project Matters for Data/BI
-
-Many Data/BI workflows depend on external systems such as databases, REST APIs, data warehouses, SaaS platforms, cloud services or generative APIs.
-
-This project demonstrates a small version of that pattern:
-
-1. receive an HTTP request
-2. read query parameters
-3. transform request input into a Python data structure
-4. call an external API
-5. request structured JSON
-6. validate the response shape
-7. return JSON to the browser
-
-The focus is not on authoritative country statistics. The focus is on API flow, JSON structure and the difference between structured data and verified data quality.
-
----
-
-## Current Scope
-
-The current endpoint is:
+This project demonstrates that process with country metadata and the World Bank population indicator `SP.POP.TOTL`:
 
 ```text
-GET /countries?country=DE,US
+World Bank API
+→ source validation
+→ normalization
+→ transactional SQLite persistence
+→ versioned Flask API
 ```
 
-It should return a JSON response with generated country objects.
+The Flask routes read from SQLite. They do not call the external source during normal requests. Data retrieval is an explicit refresh process, which keeps API responses predictable and separates ingestion failures from read traffic.
 
-Expected object structure:
+## What the project demonstrates
+
+- Flask application factory and blueprints
+- external REST API integration with timeout and error handling
+- deterministic fixture mode for local validation and CI
+- input, source-shape and semantic validation
+- relational SQLite modelling with foreign keys and constraints
+- ingestion-run tracking
+- versioned API endpoints and stable JSON error responses
+- tests covering validation, persistence, routes and CLI behavior
+- GitHub Actions on Python 3.12 for Ubuntu and Windows
+
+## Architecture
+
+```text
+refresh-data CLI
+    |
+    +-- WorldBankClient -------- live source
+    |
+    +-- FixtureWorldBankClient - deterministic fixtures
+                |
+                v
+        validation + normalization
+                |
+                v
+        SQLite transaction
+                |
+                v
+        Flask read API
+```
+
+## Data model
+
+### `countries`
+
+Stores one normalized record per ISO-2 country code, including region, income level, capital city, coordinates and provenance.
+
+### `population_observations`
+
+Stores annual `SP.POP.TOTL` observations with a composite key of country code and year.
+
+### `ingestion_runs`
+
+Records refresh status, timestamps, requested countries, loaded rows and failure messages.
+
+See [`sql/schema.sql`](sql/schema.sql) and [`docs/data-quality-notes.md`](docs/data-quality-notes.md).
+
+## API endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /` | Service metadata and endpoint overview |
+| `GET /health` | Database availability and row counts |
+| `GET /api/v1/countries` | List and filter countries |
+| `GET /api/v1/countries/<code>` | Read one country with its latest population |
+| `GET /api/v1/countries/<code>/population` | Read a population time range |
+
+Examples:
+
+```text
+GET /api/v1/countries?codes=DE,US,JP&limit=10
+GET /api/v1/countries?region=North%20America
+GET /api/v1/countries/DE
+GET /api/v1/countries/DE/population?from=2022&to=2023
+```
+
+Stable error contract:
 
 ```json
 {
-  "countryCode": "DE",
-  "countryName": "Germany",
-  "languages": ["German"],
-  "population": 83000000,
-  "description": "Short generated description."
+  "error": {
+    "code": "country_not_found",
+    "message": "No country was found for code ZZ.",
+    "details": {
+      "countryCode": "ZZ"
+    }
+  }
 }
 ```
 
----
+## Quick start
 
-## Important Data Quality Note
+### Windows PowerShell
 
-Claude/Anthropic is used here as a generative API, not as an authoritative country database.
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 
-A JSON schema can help enforce the structure of a response, but it does not automatically guarantee that generated facts such as population numbers are accurate, complete or current.
+$env:COUNTRY_API_DATABASE = "instance\country-data.sqlite"
+python -m flask --app country_api:create_app refresh-data `
+  --codes DE,US,JP `
+  --from-year 2022 `
+  --to-year 2023 `
+  --fixture-dir data\fixtures
 
-For production-quality country data, a verified source would be more appropriate, for example an official statistics source, an internal database, a curated dataset or a dedicated public country-data API.
+python -m flask --app country_api:create_app run --port 8080
+```
 
----
-
-## Setup
+### macOS / Linux
 
 ```bash
 /usr/local/bin/python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-cp .env.example .env
+
+export COUNTRY_API_DATABASE="instance/country-data.sqlite"
+python -m flask --app country_api:create_app refresh-data \
+  --codes DE,US,JP \
+  --from-year 2022 \
+  --to-year 2023 \
+  --fixture-dir data/fixtures
+
+python -m flask --app country_api:create_app run --port 8080
 ```
 
-Never commit `.env`.
+The fixture command creates a deterministic local database without network access.
 
----
+## Refresh from the live World Bank API
 
-## How to Run
-
-Run the Flask app locally:
+Remove `--fixture-dir` to use the live source explicitly:
 
 ```bash
-python main.py
+python -m flask --app country_api:create_app refresh-data \
+  --codes DE,US,JP \
+  --from-year 2020 \
+  --to-year 2024
 ```
 
-Then open:
+Normal API requests continue to read only from the local SQLite database.
 
-```text
-http://localhost:8080/countries?country=DE,US
+## Tests
+
+```powershell
+python -m compileall -q country_api tests main.py
+python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-By default, `.env.example` uses `USE_MOCK_RESPONSE=1` for local mock testing without an external API call.
+The test suite uses versioned World Bank-shaped fixtures and does not perform live HTTP requests.
 
-## Project Structure
+## Repository structure
 
 ```text
-flask-ai-country-api/
-├── README.md
-├── requirements.txt
-├── .env.example
-├── .gitignore
-├── main.py
+flask-country-data-api/
+├── .github/workflows/ci.yml
 ├── country_api/
 │   ├── __init__.py
-│   ├── anthropic_client.py
-│   ├── country_schema.py
-│   └── validation.py
-├── docs/
-│   └── data-quality-notes.md
-└── examples/
-    └── sample-response.json
+│   ├── cli.py
+│   ├── database.py
+│   ├── errors.py
+│   ├── routes.py
+│   ├── service.py
+│   ├── validation.py
+│   └── world_bank.py
+├── data/fixtures/
+│   ├── world-bank-countries.json
+│   └── world-bank-population.json
+├── docs/data-quality-notes.md
+├── examples/sample-response.json
+├── sql/schema.sql
+├── tests/
+│   ├── test_routes_and_cli.py
+│   ├── test_service_and_database.py
+│   └── test_validation.py
+├── main.py
+├── requirements.txt
+└── README.md
 ```
 
----
+## Scope boundary
 
-## Notes and Limitations
+This is a deliberately bounded portfolio project. It demonstrates controlled data ingestion and API delivery without adding an unnecessary frontend, authentication system, container platform or cloud deployment.
 
-This is a learning project.
-
-It is not a production country-data API and should not be used as an authoritative source for country information.
-
-The main value of this project is the Flask/API/JSON workflow, not the generated country facts.
+The next increment can add richer data-quality reporting, OpenAPI documentation and recruiter-facing architecture evidence without changing the deterministic core.

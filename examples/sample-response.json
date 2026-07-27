@@ -1,23 +1,21 @@
 {
-  "source": "mock",
-  "countries": [
-    {
-      "countryCode": "DE",
-      "countryName": "Mock country for DE",
-      "languages": [
-        "Example language"
-      ],
-      "population": 0,
-      "description": "Mock response for local testing without an external API call."
+  "data": {
+    "countryCode": "DE",
+    "countryName": "Germany",
+    "region": "Europe & Central Asia",
+    "incomeLevel": "High income",
+    "capitalCity": "Berlin",
+    "coordinates": {
+      "longitude": 13.4115,
+      "latitude": 52.5235
     },
-    {
-      "countryCode": "US",
-      "countryName": "Mock country for US",
-      "languages": [
-        "Example language"
-      ],
-      "population": 0,
-      "description": "Mock response for local testing without an external API call."
+    "latestPopulation": {
+      "year": 2023,
+      "value": 84482267
+    },
+    "provenance": {
+      "source": "World Bank fixture snapshot",
+      "fetchedAt": "2026-01-01T00:00:00+00:00"
     }
-  ]
+  }
 }

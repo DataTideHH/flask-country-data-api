@@ -1,0 +1,17 @@
+{
+  "fixtureType": "representative World Bank-shaped SP.POP.TOTL observations",
+  "observations": {
+    "DE": [
+      {"indicator": {"id": "SP.POP.TOTL"}, "country": {"id": "DE"}, "date": "2022", "value": 83797985},
+      {"indicator": {"id": "SP.POP.TOTL"}, "country": {"id": "DE"}, "date": "2023", "value": 84482267}
+    ],
+    "US": [
+      {"indicator": {"id": "SP.POP.TOTL"}, "country": {"id": "US"}, "date": "2022", "value": 333287557},
+      {"indicator": {"id": "SP.POP.TOTL"}, "country": {"id": "US"}, "date": "2023", "value": 334914895}
+    ],
+    "JP": [
+      {"indicator": {"id": "SP.POP.TOTL"}, "country": {"id": "JP"}, "date": "2022", "value": 125124989},
+      {"indicator": {"id": "SP.POP.TOTL"}, "country": {"id": "JP"}, "date": "2023", "value": 124516650}
+    ]
+  }
+}
