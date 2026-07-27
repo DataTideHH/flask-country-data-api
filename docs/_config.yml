@@ -1,0 +1,15 @@
+title: Flask Country Data API
+description: Reproducible World Bank ingestion, SQLite persistence, SQL data-quality checks and a documented Flask read API.
+theme: jekyll-theme-cayman
+show_downloads: false
+repository: DataTideHH/flask-country-data-api
+url: https://datatidehh.github.io
+baseurl: /flask-country-data-api
+lang: en
+
+plugins:
+  - jekyll-relative-links
+
+relative_links:
+  enabled: true
+  collections: true
