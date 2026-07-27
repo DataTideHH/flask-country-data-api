@@ -1,6 +1,6 @@
 # Flask Country Data API
 
-[![CI](https://github.com/DataTideHH/flask-ai-country-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DataTideHH/flask-ai-country-api/actions/workflows/ci.yml)
+[![CI](https://github.com/DataTideHH/flask-country-data-api/actions/workflows/ci.yml/badge.svg)](https://github.com/DataTideHH/flask-country-data-api/actions/workflows/ci.yml)
 
 **Flask API and reproducible World Bank data workflow with SQLite persistence, request and source validation, explicit provenance, fixture-based tests and cross-platform CI.**
 
